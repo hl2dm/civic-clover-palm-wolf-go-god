@@ -35,7 +35,7 @@ export const EVENTS: EventDef[] = [
     id: "dongfu",
     title: "無名洞府",
     body: "石門半掩，裡面殘留著前人的氣息。洞壁刻著半卷功法，也隱隱有陣法反噬的味道。",
-    bg: "/scenes/cave.jpg",
+    bg: "/scenes/events/dongfu.jpg",
     figure: "/scenes/hermit.jpg",
     seal: "府",
     choices: [
@@ -76,7 +76,7 @@ export const EVENTS: EventDef[] = [
     id: "sanxiu",
     title: "散修交易",
     body: "一名面黃肌瘦的散修攔住去路，攤開一塊舊布：幾張殘破符籙，要價不低。",
-    bg: "/scenes/forest.jpg",
+    bg: "/scenes/events/sanxiu.jpg",
     figure: "/scenes/wanderer.jpg",
     seal: "市",
     choices: [
@@ -115,7 +115,7 @@ export const EVENTS: EventDef[] = [
     id: "xinmo",
     title: "心魔叩問",
     body: "夜宿崖邊，你聽見自己的聲音：若功法駁雜，道心如何不裂？",
-    bg: "/scenes/cliff.jpg",
+    bg: "/scenes/events/xinmo.jpg",
     figure: "/scenes/shade.jpg",
     seal: "心",
     choices: [
@@ -143,7 +143,7 @@ export const EVENTS: EventDef[] = [
     id: "qianbei",
     title: "前輩殘影",
     body: "一縷殘魂坐在枯松下，看了你一眼：「小輩，可願聽我一言？」",
-    bg: "/scenes/cliff.jpg",
+    bg: "/scenes/events/qianbei.jpg",
     figure: "/scenes/hermit.jpg",
     seal: "影",
     choices: [
@@ -168,7 +168,7 @@ export const EVENTS: EventDef[] = [
     id: "lingquan",
     title: "山中靈泉",
     body: "一線清泉自石縫滲出，喝下去只怕有益，也怕雜質入體。",
-    bg: "/scenes/forest.jpg",
+    bg: "/scenes/events/lingquan.jpg",
     figure: "/scenes/fox.jpg",
     seal: "泉",
     choices: [
@@ -197,8 +197,8 @@ export const EVENTS: EventDef[] = [
     id: "tiancai",
     title: "天材地寶",
     body: "崖縫中探出一株三葉靈芝。強摘可能損了根基，細心培元則可溫養功法。",
-    bg: "/scenes/forest.jpg",
-    figure: "/scenes/hermit.jpg",
+    bg: "/scenes/events/tiancai.jpg",
+    figure: "/scenes/fox.jpg",
     seal: "芝",
     choices: [
       {
@@ -223,7 +223,7 @@ export const EVENTS: EventDef[] = [
     id: "jieyun",
     title: "劫雲低垂",
     body: "天色忽然壓暗。這不是你的天劫，卻也夠傷人。硬抗可淬鍊肉身。",
-    bg: "/scenes/cliff.jpg",
+    bg: "/scenes/events/jieyun.jpg",
     figure: "/scenes/monk-storm.jpg",
     seal: "劫",
     choices: [
@@ -251,7 +251,7 @@ export const EVENTS: EventDef[] = [
     id: "danfang",
     title: "廢棄丹房",
     body: "爐火已熄，案上還剩幾枚封蠟未乾的丹藥。有的溫潤，有的發黑。",
-    bg: "/scenes/cave.jpg",
+    bg: "/scenes/events/danfang.jpg",
     figure: "/scenes/wanderer.jpg",
     seal: "丹",
     choices: [
