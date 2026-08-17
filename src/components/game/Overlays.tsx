@@ -11,6 +11,7 @@ import { useGame } from "@/lib/game/store";
 import { cn } from "@/lib/utils";
 import { ItemIcon } from "./ItemIcon";
 import { TalismanCard } from "./TalismanCard";
+import { WoodLabel } from "./Chrome";
 
 export function RewardView() {
   const { reward, pickRewardCard, skipRewardCard, takeRewardPotion, takeRewardRelic, leaveReward } =
@@ -155,9 +156,9 @@ export function ShopView() {
               <span className="display-ink text-xs tracking-widest text-paper/70">靈石</span>
               <span className="qi-num qi-num-heal text-2xl leading-none sm:text-3xl">{run.gold}</span>
             </div>
-            <Button variant="ghost" onClick={leaveShop}>
+            <WoodLabel face="strip" onClick={leaveShop}>
               離去
-            </Button>
+            </WoodLabel>
           </div>
         </header>
 
@@ -242,12 +243,12 @@ export function ShopView() {
               <span className={`qi-num min-w-[3rem] text-right text-3xl leading-none ${poor ? "qi-num-dmg" : "qi-num-heal"}`}>
                 {offer.sold ? "—" : offer.price}
               </span>
-              <Button variant="ghost" onClick={() => setPicked(null)}>
+              <WoodLabel face="strip" onClick={() => setPicked(null)}>
                 作罷
-              </Button>
-              <Button onClick={confirm} disabled={offer.sold}>
+              </WoodLabel>
+              <WoodLabel face="strip" wide onClick={confirm} disabled={offer.sold}>
                 {offer.kind === "remove" ? "廢功" : "購置"}
-              </Button>
+              </WoodLabel>
             </div>
           </div>
         ) : (
@@ -534,13 +535,11 @@ export function ResultView() {
             {ACT_NAME[run.act]} · 第 {run.floor} 層 · 斬殺 {run.kills} · 功法 {run.deck.length}
           </p>
         ) : null}
-        <div className="mt-8 flex gap-3">
-          <Button size="lg" className="flex-1" onClick={newRun}>
-            再入輪迴
-          </Button>
-          <Button size="lg" variant="ghost" className="flex-1" onClick={abandon}>
+        <div className="mt-8 flex flex-col items-center gap-2">
+          <WoodLabel onClick={newRun}>再入輪迴</WoodLabel>
+          <WoodLabel tone="dark" compact onClick={abandon}>
             歸山
-          </Button>
+          </WoodLabel>
         </div>
       </div>
     </section>

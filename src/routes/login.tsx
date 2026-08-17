@@ -8,7 +8,7 @@ function Login() {
   return (
     <main className="relative grid min-h-dvh place-items-center px-5">
       <img
-        src="/title-bg.jpg"
+        src="/title-bg.jpg?v=9"
         alt=""
         className="absolute inset-0 size-full object-cover opacity-40"
         crossOrigin="anonymous"

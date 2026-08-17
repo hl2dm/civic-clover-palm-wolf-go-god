@@ -14,6 +14,7 @@ export type CardType = "attack" | "skill" | "power";
 export type CardRarity = "starter" | "common" | "uncommon" | "rare";
 export type TargetKind = "enemy" | "all" | "self" | "none";
 export type NodeType = "combat" | "elite" | "rest" | "shop" | "event" | "treasure" | "boss";
+export type ActId = 1 | 2 | 3;
 
 export type StatusId =
   | "strength"
@@ -90,6 +91,9 @@ export interface CombatState {
   extraDraw: number;
   freePlay: boolean;
   lieboArmed: boolean;
+  yingkuiArmed: boolean;
+  speech: { uid: string; text: string } | null;
+  calamity: number;
 }
 
 export interface MapNode {
@@ -119,6 +123,7 @@ export interface PendingSelect {
   title: string;
   hint: string;
   after: "map" | "rest" | "shop";
+  resolved?: string;
 }
 
 export interface RewardState {
@@ -133,7 +138,7 @@ export interface RewardState {
 
 export interface RunState {
   seed: number;
-  act: 1 | 2;
+  act: ActId;
   hp: number;
   maxHp: number;
   gold: number;
@@ -148,6 +153,11 @@ export interface RunState {
   nextUid: number;
   rngState: number;
   kills: number;
+  xpEarned: number;
+  meritEarned: number;
+  flags: string[];
+  path: string;
+  calamity: number;
 }
 
 export interface MetaState {
@@ -156,9 +166,22 @@ export interface MetaState {
   victories: number;
   bestAct: number;
   bestFloor: number;
+  xp: number;
+  seen: string[];
+  seenCards: string[];
+  seenRelics: string[];
+  merit: number;
+  spent: Record<string, number>;
+  path: string;
+  calamity: number;
+  maxCalamity: number;
+  feats: string[];
+  totalKills: number;
+  elitesSlain: number;
+  bossesSlain: number;
 }
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 3;
 export const START_HP = 72;
 export const START_GOLD = 99;
 export const START_ENERGY = 3;

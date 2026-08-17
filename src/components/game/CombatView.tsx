@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CARDS, previewDamage } from "@/lib/game/cards";
-import { ENEMIES, intentLabel } from "@/lib/game/enemies";
-import { spriteScale, type SpritePose } from "@/lib/game/sprites";
+import { ENEMIES } from "@/lib/game/enemies";
+import { spriteBox, type SpritePose } from "@/lib/game/sprites";
 import { useGame } from "@/lib/game/store";
 import type { EnemyInst, Floater } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
 import {
-  BlockSeal,
   CombatToast,
   FxNums,
   HpPlaque,
@@ -93,8 +92,8 @@ export function CombatView() {
 
   useEffect(() => {
     if (!combat || combat.phase !== "player" || !combat.selectedUid || handAnim) {
-      setFocusUid(null);
-      setAimHint(false);
+      setFocusUid((cur) => (cur == null ? cur : null));
+      setAimHint((cur) => (cur ? false : cur));
       return;
     }
     const live = combat.enemies.filter((e) => e.hp > 0);
@@ -118,7 +117,7 @@ export function CombatView() {
   return (
     <div className="relative min-h-[calc(100dvh-52px)] overflow-hidden">
       <img
-        src={run?.act === 2 ? "/arena-jindan.jpg" : "/arena-qingming.jpg"}
+        src={run?.act === 3 ? "/arena-yuanying.jpg" : run?.act === 2 ? "/arena-jindan.jpg" : "/arena-qingming.jpg"}
         alt=""
         className="absolute inset-0 size-full object-cover object-[center_62%]"
         crossOrigin="anonymous"
@@ -145,21 +144,20 @@ export function CombatView() {
           </div>
         ) : null}
 
-        <header className="combat-top z-10 grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-2 sm:px-5">
+        <header className="combat-top pointer-events-none absolute inset-x-0 top-0 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-1.5 sm:px-5">
           <div className="space-y-1">
-            <HpPlaque name="問道人" hp={combat.playerHp} max={combat.playerMaxHp} compact />
+            <HpPlaque name="問道人" hp={combat.playerHp} max={combat.playerMaxHp} block={combat.playerBlock} compact />
             <div className="flex flex-wrap items-center gap-2">
               <QiOrbs energy={combat.energy} max={combat.maxEnergy} starve={denyAt} />
-              <BlockSeal value={combat.playerBlock} />
             </div>
             <StatusStamps statuses={combat.playerStatuses} />
           </div>
           <div className="text-center">
-            <p className="display-ink text-sm tracking-[0.35em] text-muted">
+            <p className="display-ink text-sm tracking-[0.28em] text-muted">
               {locked ? "敵手" : "問道"}
             </p>
             <p className="qi-num qi-num-hp text-3xl leading-none sm:text-4xl">{combat.turn}</p>
-            <p className="display-ink mt-0.5 text-xs tracking-[0.28em] text-muted">回合</p>
+            <p className="mt-0.5 display-ink text-[13px] tracking-[0.22em] text-muted">回合</p>
           </div>
           <div className="flex flex-col items-end gap-1">
             {foes.map((e) => (
@@ -168,12 +166,10 @@ export function CombatView() {
                   name={ENEMIES[e.defId]?.name ?? "敵"}
                   hp={e.hp}
                   max={e.maxHp}
+                  block={e.block}
                   align="right"
                   compact
                 />
-                <div className="flex justify-end">
-                  <IntentMark label={intentLabel(e.intent)} />
-                </div>
                 <StatusStamps statuses={e.statuses} />
               </div>
             ))}
@@ -181,7 +177,7 @@ export function CombatView() {
         </header>
 
         <div
-          className="relative flex min-h-0 flex-1 items-stretch justify-between gap-2 overflow-hidden px-2 pb-2 pt-6 sm:px-8 sm:pt-8"
+          className="relative z-0 flex min-h-0 flex-1 items-stretch justify-between gap-2 overflow-visible px-2 pb-2 pt-20 sm:px-8 sm:pt-24"
           data-aiming={aiming ? "1" : "0"}
         >
           {aiming ? (
@@ -253,6 +249,7 @@ export function CombatView() {
                   acting={actingUid === e.uid}
                   crowded={foes.length > 1}
                   floaters={combat.floaters.filter((f) => f.target === e.uid)}
+                  speech={combat.speech}
                   onHover={() => {
                     if (aiming && e.hp > 0) setFocusUid(e.uid);
                   }}
@@ -279,7 +276,7 @@ export function CombatView() {
               data-hand-rail
               data-hand-count={combat.hand.length}
               data-hand-anim={handAnim ?? "idle"}
-              className="relative -mx-1 flex h-[13rem] min-w-0 flex-1 items-end justify-center gap-1.5 overflow-x-auto px-1 pb-1 pt-7 sm:h-[17.25rem] sm:gap-2 sm:pt-8"
+              className="relative -mx-1 flex h-[15.5rem] min-w-0 flex-1 items-end justify-center gap-1.5 overflow-x-auto px-1 pb-1 pt-7 sm:h-[19.25rem] sm:gap-2 sm:pt-8"
             >
               {combat.hand.map((card, i) => {
                 const def = CARDS[card.defId];
@@ -335,7 +332,7 @@ function pickThreat(enemies: EnemyInst[]): EnemyInst | undefined {
 }
 
 function beastWound(enemies: EnemyInst[]): boolean {
-  const beasts = new Set(["shanxiao", "lingshe", "huoya", "juyuan"]);
+  const beasts = new Set(["shanxiao", "lingshe", "huoya", "juyuan", "xuefu", "yanxi", "leishi", "fengli"]);
   return enemies.some((e) => e.hp > 0 && beasts.has(e.defId));
 }
 
@@ -361,13 +358,20 @@ function usePose(acting: boolean, hp: number, pulse = 0): SpritePose {
       return () => window.clearTimeout(t);
     }
     prevHp.current = hp;
-    if (hp <= 0) setPose("hurt");
+    if (hp <= 0) setPose((p) => (p === "hurt" ? p : "hurt"));
   }, [hp]);
 
   useEffect(() => {
-    if (!acting) return;
-    setPose("attack");
-    const t = window.setTimeout(() => setPose(hp <= 0 ? "hurt" : "idle"), 480);
+    if (acting) {
+      setPose("attack");
+      const t = window.setTimeout(() => setPose(hp <= 0 ? "hurt" : "idle"), 560);
+      return () => window.clearTimeout(t);
+    }
+    if (hp <= 0) {
+      setPose((p) => (p === "hurt" ? p : "hurt"));
+      return;
+    }
+    const t = window.setTimeout(() => setPose((p) => (p === "hurt" || p === "idle" ? p : "idle")), 90);
     return () => window.clearTimeout(t);
   }, [acting, pulse, hp]);
 
@@ -387,7 +391,7 @@ function Figure({
   onClick,
   facing = "left",
   wound = "slash",
-  size,
+  box,
 }: {
   targetId: string;
   defId: string;
@@ -401,7 +405,7 @@ function Figure({
   onClick?: () => void;
   facing?: "left" | "right";
   wound?: "slash" | "claw";
-  size?: "sm" | "md" | "lg" | "xl";
+  box?: { w: number; h: number };
 }) {
   const pose = usePose(acting, hp, pulse);
   const Comp = onClick ? "button" : "div";
@@ -416,14 +420,9 @@ function Figure({
         )}
       >
         <div className="relative">
-          <SpriteActor defId={defId} pose={pose} size={size ?? spriteScale(defId)} facing={facing} />
+          <SpriteActor defId={defId} pose={pose} box={box ?? spriteBox(defId)} facing={facing} />
           <BodyFx hp={hp} block={block} wound={wound} />
           <span className="pointer-events-none absolute inset-x-6 bottom-1 h-3 rounded-[100%] bg-bg/50 blur-[3px]" />
-          {block > 0 ? (
-            <div className="absolute right-0 top-2 z-20">
-              <BlockSeal value={block} />
-            </div>
-          ) : null}
           {preview != null && !onClick ? (
             <div className="absolute left-1 top-2 z-20">
               <PreviewMark value={preview} />
@@ -445,6 +444,7 @@ function EnemyFigure({
   acting,
   crowded,
   floaters,
+  speech,
   onClick,
   onHover,
 }: {
@@ -456,6 +456,7 @@ function EnemyFigure({
   acting: boolean;
   crowded: boolean;
   floaters: Floater[];
+  speech: { uid: string; text: string } | null;
   onClick: () => void;
   onHover: () => void;
 }) {
@@ -463,7 +464,7 @@ function EnemyFigure({
   const def = ENEMIES[enemy.defId];
   if (!def) return null;
   const dead = enemy.hp <= 0;
-  const size = crowdScale(spriteScale(enemy.defId), crowded);
+  const box = spriteBox(enemy.defId, crowded);
   return (
     <HitWrap targetId={enemy.uid} className={cn("relative h-full min-h-0", aiming && focused && "z-10", dead && "foe-fall")}>
       <button
@@ -481,24 +482,22 @@ function EnemyFigure({
           dead && "pointer-events-none",
         )}
       >
-        {aiming && !dead ? (
-          <div className="absolute left-1/2 top-1 z-30 -translate-x-1/2">
-            <TargetPlate index={index} name={def.name} damage={preview} focused={focused} />
-          </div>
-        ) : !dead ? (
-          <div className="pointer-events-none absolute left-1/2 top-1 z-30 -translate-x-1/2">
-            <IntentMark label={intentLabel(enemy.intent)} size="lg" />
-          </div>
-        ) : null}
         <div className="relative">
-          <SpriteActor defId={enemy.defId} pose={pose} size={size} facing="left" />
-          <BodyFx hp={enemy.hp} block={enemy.block} wound="slash" />
-          <span className="pointer-events-none absolute inset-x-6 bottom-1 h-3 rounded-[100%] bg-bg/50 blur-[3px]" />
-          {enemy.block > 0 ? (
-            <div className="absolute right-0 top-2 z-20">
-              <BlockSeal value={enemy.block} />
+          {!dead ? (
+            <div className="intent-hover pointer-events-none">
+              {aiming ? (
+                <TargetPlate index={index} name={def.name} damage={preview} focused={focused} />
+              ) : (
+                <IntentMark intent={enemy.intent} size="lg" />
+              )}
             </div>
           ) : null}
+          <SpriteActor defId={enemy.defId} pose={pose} box={box} facing="left" />
+          <BodyFx hp={enemy.hp} block={enemy.block} wound="slash" />
+          {speech && speech.uid === enemy.uid && !dead ? (
+            <span className="foe-speech">{speech.text}</span>
+          ) : null}
+          <span className="pointer-events-none absolute inset-x-6 bottom-1 h-3 rounded-[100%] bg-bg/50 blur-[3px]" />
           <FxNums items={floaters} />
         </div>
       </button>
@@ -506,12 +505,3 @@ function EnemyFigure({
   );
 }
 
-function crowdScale(
-  size: "sm" | "md" | "lg" | "xl",
-  crowded: boolean,
-): "sm" | "md" | "lg" | "xl" {
-  if (!crowded) return size;
-  if (size === "xl") return "lg";
-  if (size === "lg") return "md";
-  return "sm";
-}

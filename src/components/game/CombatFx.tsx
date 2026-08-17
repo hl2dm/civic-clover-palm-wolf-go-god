@@ -15,25 +15,31 @@ export function useCombatShake() {
   useEffect(() => {
     if (reduced) return;
     let raf = 0;
+    let resting = true;
     const tick = () => {
       trauma.current = Math.max(0, trauma.current - 0.05);
       const s = trauma.current * trauma.current;
-      setOffset({
-        x: s > 0.002 ? (Math.random() * 2 - 1) * s * 16 : 0,
-        y: s > 0.002 ? (Math.random() * 2 - 1) * s * 11 : 0,
-      });
+      if (s > 0.002) {
+        resting = false;
+        setOffset({
+          x: (Math.random() * 2 - 1) * s * 16,
+          y: (Math.random() * 2 - 1) * s * 11,
+        });
+      } else if (!resting) {
+        resting = true;
+        setOffset({ x: 0, y: 0 });
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [reduced]);
 
-  return {
-    offset,
-    addTrauma: (n: number) => {
-      trauma.current = Math.min(1, trauma.current + n);
-    },
-  };
+  const addTrauma = useRef((n: number) => {
+    trauma.current = Math.min(1, trauma.current + n);
+  }).current;
+
+  return { offset, addTrauma };
 }
 
 export function CombatFx({

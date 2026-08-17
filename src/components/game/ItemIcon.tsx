@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 export function itemSrc(kind: "relic" | "potion" | "misc", id: string): string {
@@ -17,14 +18,20 @@ export function ItemIcon({
   seal?: string;
   className?: string;
 }) {
+  const [ok, setOk] = useState(true);
   return (
     <span className={cn("relative grid place-items-center overflow-hidden", className)}>
-      <img
-        src={itemSrc(kind, id)}
-        alt=""
-        className="size-full object-contain"
-        crossOrigin="anonymous"
-      />
+      {ok ? (
+        <img
+          src={itemSrc(kind, id)}
+          alt=""
+          className="size-full object-contain"
+          crossOrigin="anonymous"
+          onError={() => setOk(false)}
+        />
+      ) : (
+        <span className="display-ink text-lg text-paper/85">{seal}</span>
+      )}
       <span className="sr-only">{seal}</span>
     </span>
   );

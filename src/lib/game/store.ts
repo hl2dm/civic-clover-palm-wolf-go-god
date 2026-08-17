@@ -16,6 +16,18 @@ import {
 import { canUpgrade, pickEvent } from "./events";
 import type { EventDef } from "./events";
 import { ACT_NAME, generateMap, reachableFrom } from "./map";
+import {
+  INCENSE,
+  MERIT,
+  PATHS,
+  XP,
+  contentOpen,
+  incenseRank,
+  markSeen,
+  pathOpen,
+  realmAt,
+  unlockFeats,
+} from "./meta";
 import { healPlayer } from "./engine";
 import { POTION_LIST, POTIONS } from "./potions";
 import { RELIC_LIST, RELICS } from "./relics";
@@ -59,8 +71,19 @@ export interface GameStore {
   turnBeat: null | "enemy" | "player" | "win" | "lose";
   denyUid: string | null;
   denyAt: number;
+  heritageOpen: boolean;
+  lastXp: { amount: number; realm: string | null; merit?: number; feats?: string[] } | null;
+  prepareOpen: boolean;
+  draftPath: string;
+  draftCalamity: number;
   hydrate: () => void;
   newRun: () => void;
+  openPrepare: () => void;
+  closePrepare: () => void;
+  setDraftPath: (id: string) => void;
+  setDraftCalamity: (n: number) => void;
+  confirmRun: () => void;
+  buyIncense: (id: string) => void;
   continueRun: () => void;
   abandon: () => void;
   chooseNode: (id: string) => void;
@@ -80,12 +103,14 @@ export interface GameStore {
   restUpgrade: () => void;
   chooseEvent: (choiceId: string) => void;
   pickSelectCard: (uid: string) => void;
+  leaveSelect: () => void;
   cancelSelect: () => void;
   pickTreasure: (id: string) => void;
   setDeckOpen: (v: boolean) => void;
   setHelpOpen: (v: boolean) => void;
   setConfirmNew: (v: boolean) => void;
   setInspect: (v: { kind: "relic" | "potion"; id: string } | null) => void;
+  setHeritageOpen: (v: boolean) => void;
   dismissToast: () => void;
 }
 
@@ -93,6 +118,93 @@ function persist(screen: Screen, run: RunState | null) {
   if (!run) return;
   if (screen === "title" || screen === "result") return;
   saveRun(screen, run);
+}
+
+function awardXp(
+  get: () => GameStore,
+  amount: number,
+  extras?: { kills?: string[] },
+): { meta: MetaState; gained: number; realm: string | null } {
+  const prev = get().meta;
+  const meta: MetaState = {
+    ...prev,
+    seen: [...(prev.seen ?? [])],
+    seenCards: [...(prev.seenCards ?? [])],
+    seenRelics: [...(prev.seenRelics ?? [])],
+    spent: { ...(prev.spent ?? {}) },
+    feats: [...(prev.feats ?? [])],
+  };
+  let gained = amount;
+  if (extras?.kills) {
+    for (const id of extras.kills) {
+      if (!meta.seen.includes(id)) {
+        meta.seen.push(id);
+        gained += XP.firstKill;
+      }
+    }
+  }
+  const before = realmAt(meta.xp).id;
+  meta.xp += gained;
+  const after = realmAt(meta.xp);
+  saveMeta(meta);
+  return { meta, gained, realm: after.id !== before ? after.name : null };
+}
+
+function noteCards(meta: MetaState, ids: string[]) {
+  for (const id of ids) markSeen(meta.seenCards, id);
+}
+
+function noteRelic(meta: MetaState, id: string | null | undefined) {
+  if (id) markSeen(meta.seenRelics, id);
+}
+
+function pathOpenSafe(meta: MetaState, id: string): boolean {
+  const def = PATHS.find((p) => p.id === id);
+  return def ? pathOpen(meta, def) : false;
+}
+
+function applyMetaToRun(run: RunState, meta: MetaState, rng: Rng) {
+  const houtu = incenseRank(meta, "houtu");
+  const nang = incenseRank(meta, "nangzhong");
+  run.maxHp += houtu * 6;
+  run.hp = run.maxHp;
+  run.gold += nang * 22;
+  if (incenseRank(meta, "qimai")) run.maxEnergy += 1;
+  if (incenseRank(meta, "jianzhong")) {
+    run.deck.push({ uid: alloc(run), defId: "pikong", upgraded: false });
+  }
+  if (incenseRank(meta, "danyuan")) {
+    const i = run.potions.findIndex((p) => p == null);
+    if (i >= 0) run.potions[i] = rng.pick(POTION_LIST).id;
+  }
+  if (incenseRank(meta, "shibao")) {
+    const commons = RELIC_LIST.filter((r) => r.rarity === "common" && !r.unlock && !run.relics.includes(r.id));
+    if (commons.length) applyRelicGain(run, rng.pick(commons).id);
+  }
+  if (run.path === "ti") {
+    run.maxHp += 10;
+    run.hp = run.maxHp;
+    run.deck.push({ uid: alloc(run), defId: "huti", upgraded: false });
+  }
+  if (run.path === "san") {
+    run.gold += 50;
+    const i = run.potions.findIndex((p) => p == null);
+    if (i >= 0) run.potions[i] = rng.pick(POTION_LIST).id;
+  }
+  if (run.path === "mo") {
+    run.maxHp = Math.max(20, run.maxHp - 6);
+    run.hp = run.maxHp;
+    applyRelicGain(run, "xueyu");
+  }
+  if (run.calamity >= 2) {
+    run.maxHp = Math.max(16, run.maxHp - 4);
+    run.hp = run.maxHp;
+  }
+  if (run.calamity >= 4) run.gold = Math.max(0, run.gold - 20);
+  if (run.calamity >= 5) {
+    const i = run.deck.findIndex((c) => c.defId === "pikong");
+    if (i >= 0) run.deck.splice(i, 1);
+  }
 }
 
 function alloc(run: RunState): string {
@@ -131,9 +243,9 @@ function addPotion(run: RunState, id: string): boolean {
   return true;
 }
 
-function rollRelic(run: RunState): string | null {
+function rollRelic(run: RunState, metaXp = 0): string | null {
   const rng = rngOf(run);
-  const pool = RELIC_LIST.filter((r) => !run.relics.includes(r.id));
+  const pool = RELIC_LIST.filter((r) => !run.relics.includes(r.id) && contentOpen({ xp: metaXp } as MetaState, r.unlock));
   run.rngState = rng.state;
   if (!pool.length) return null;
   return rng.pick(pool).id;
@@ -152,9 +264,9 @@ function rarityWeight(rarity: string, favor: boolean): number {
   return favor ? 50 : 64;
 }
 
-function rollCards(run: RunState, n: number): CardInst[] {
+function rollCards(run: RunState, n: number, metaXp = 0): CardInst[] {
   const rng = rngOf(run);
-  const pool = rewardPool();
+  const pool = rewardPool({ xp: metaXp });
   const favor = run.relics.includes("tongtian");
   const used = new Set<string>();
   const cards: CardInst[] = [];
@@ -210,7 +322,7 @@ function enterNode(
 
   if (node.type === "combat" || node.type === "elite" || node.type === "boss") {
     const rng = rngOf(run);
-    const encounter = rollEncounter(node.type, run.act, rng, node.layer);
+    const encounter = rollEncounter(node.type, run.act, rng, node.layer, get().meta.xp, run.calamity ?? 0);
     run.rngState = rng.state;
     const combat = startCombat(run, encounter, () => alloc(run));
     run.rngState = combat.rngState;
@@ -220,7 +332,7 @@ function enterNode(
   }
   if (node.type === "shop") {
     const rng = rngOf(run);
-    const cards = rollCards(run, 3).map((c) => {
+    const cards = rollCards(run, 3, get().meta.xp).map((c) => {
       const def = CARDS[c.defId]!;
       const price = shopPrice(
         run,
@@ -228,7 +340,7 @@ function enterNode(
       );
       return { kind: "card" as const, id: c.defId, price, sold: false };
     });
-    const relicId = rollRelic(run);
+    const relicId = rollRelic(run, get().meta.xp);
     const potions = [rollPotion(run), rollPotion(run), rollPotion(run)].filter(
       (pid, i, arr): pid is string => Boolean(pid) && arr.indexOf(pid) === i,
     );
@@ -251,7 +363,7 @@ function enterNode(
   }
   if (node.type === "event") {
     const rng = rngOf(run);
-    const event = pickEvent(rng);
+    const event = pickEvent(rng, get().meta);
     run.rngState = rng.state;
     set(() => ({ ...extra, screen: "event", event, run: { ...run } }));
     persist("event", run);
@@ -260,7 +372,7 @@ function enterNode(
   if (node.type === "treasure") {
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const idRelic = rollRelic(run);
+      const idRelic = rollRelic(run, get().meta.xp);
       if (idRelic && !ids.includes(idRelic)) ids.push(idRelic);
     }
     set(() => ({ ...extra, screen: "treasure", treasure: ids, run: { ...run } }));
@@ -281,15 +393,37 @@ function afterCombatVictory(
   let gold =
     node?.type === "boss" ? rng.intRange(85, 110) : node?.type === "elite" ? rng.intRange(28, 42) : rng.intRange(12, 22);
   if (run.relics.includes("shijin")) gold += 15;
+  if (run.calamity > 0) gold = Math.max(1, Math.floor(gold * (1 - 0.1 * Math.min(run.calamity, 4))));
   run.gold += gold;
   if (run.relics.includes("huichunpei")) {
     run.hp = Math.min(run.maxHp, run.hp + 5);
   }
+  if (run.relics.includes("canjuan") && !run.flags.includes("canjuan")) {
+    const raw = run.deck.find((c) => !c.upgraded && canUpgrade(c));
+    if (raw) {
+      raw.upgraded = true;
+      run.flags.push("canjuan");
+    }
+  }
   const potionChance = node?.type === "boss" ? 1 : node?.type === "elite" ? 0.5 : 0.28;
   const potion = rng.chance(potionChance) ? rng.pick(POTION_LIST).id : null;
-  const relic = node?.type === "elite" || node?.type === "boss" ? rollRelic(run) : null;
-  const cards = rollCards(run, 3);
+  const relic = node?.type === "elite" || node?.type === "boss" ? rollRelic(run, get().meta.xp) : null;
+  const cards = rollCards(run, 3, get().meta.xp);
   run.rngState = rng.state;
+  let xpAmt = node?.type === "boss" ? XP.boss : node?.type === "elite" ? XP.elite : XP.combat;
+  if (combat.enemies.length > 1) xpAmt += XP.extraFoe * (combat.enemies.length - 1);
+  let meritAmt = node?.type === "boss" ? MERIT.boss : node?.type === "elite" ? MERIT.elite : MERIT.combat;
+  if (combat.enemies.length > 1) meritAmt += MERIT.extraFoe * (combat.enemies.length - 1);
+  const awarded = awardXp(get, xpAmt, { kills: combat.enemies.map((e) => e.defId) });
+  awarded.meta.totalKills += combat.enemies.length;
+  if (node?.type === "elite") awarded.meta.elitesSlain += 1;
+  if (node?.type === "boss") awarded.meta.bossesSlain += 1;
+  noteCards(awarded.meta, cards.map((c) => c.defId));
+  noteRelic(awarded.meta, relic);
+  const featNames = unlockFeats(awarded.meta).map((f) => f.name);
+  saveMeta(awarded.meta);
+  run.xpEarned = (run.xpEarned ?? 0) + awarded.gained;
+  run.meritEarned = (run.meritEarned ?? 0) + meritAmt;
   const reward: RewardState = {
     gold,
     cards,
@@ -300,17 +434,23 @@ function afterCombatVictory(
     pickedRelic: !relic,
   };
   sfx.win();
-  sfx.win();
+  const toast = awarded.realm
+    ? `${awarded.realm}境已開`
+    : featNames[0]
+      ? `功業 · ${featNames[0]}`
+      : `悟道 +${awarded.gained}`;
   set({
     screen: "reward",
     reward,
     combat: null,
     run: { ...run },
+    meta: awarded.meta,
     handAnim: null,
     exitingUids: [],
     turnBeat: null,
     actingUid: null,
-    toast: null,
+    toast,
+    lastXp: { amount: awarded.gained, realm: awarded.realm, merit: meritAmt, feats: featNames },
   });
   persist("reward", run);
 }
@@ -323,30 +463,50 @@ function finishActOrMap(
   if (!run) return;
   const node = run.map.find((n) => n.id === run.currentNodeId);
   if (node?.type === "boss") {
-    if (run.act === 1) {
+    if (run.act < 3) {
+      const next = (run.act + 1) as 1 | 2 | 3;
       const rng = rngOf(run);
-      run.act = 2;
-      run.map = generateMap(2, rng);
+      run.act = next;
+      run.map = generateMap(next, rng, run.calamity ?? 0);
       run.currentNodeId = null;
       run.visited = [];
       run.hp = Math.min(run.maxHp, run.hp + Math.ceil(run.maxHp * 0.3));
+      if (run.relics.includes("changsheng")) run.hp = Math.min(run.maxHp, run.hp + 10);
       run.rngState = rng.state;
       set(() => ({
         ...blankOverlays(),
         screen: "map",
         run: { ...run },
-        toast: `${ACT_NAME[2]}已開`,
+        toast: `${ACT_NAME[next]}已開`,
       }));
       persist("map", run);
       return;
     }
-    const meta = { ...get().meta };
+    const awarded = awardXp(get, XP.victory);
+    const meta = { ...awarded.meta };
     meta.victories += 1;
-    meta.bestAct = 2;
+    meta.bestAct = 3;
     meta.bestFloor = Math.max(meta.bestFloor, run.floor);
+    run.xpEarned = (run.xpEarned ?? 0) + awarded.gained;
+    run.meritEarned = (run.meritEarned ?? 0) + MERIT.victory;
+    if ((run.calamity ?? 0) >= meta.maxCalamity) {
+      meta.maxCalamity = Math.min(5, (run.calamity ?? 0) + 1);
+    }
+    const fresh = unlockFeats(meta);
+    meta.merit += (run.meritEarned ?? 0) + fresh.reduce((s, f) => s + f.merit, 0);
     saveMeta(meta);
+    if (run.relics.includes("changsheng")) run.hp = Math.min(run.maxHp, run.hp + 10);
     clearRun();
-    set(() => ({ screen: "result", result: "win", run, meta, combat: null, reward: null, turnBeat: null }));
+    set(() => ({
+      screen: "result",
+      result: "win",
+      run,
+      meta,
+      combat: null,
+      reward: null,
+      turnBeat: null,
+      lastXp: { amount: run.xpEarned, realm: awarded.realm, merit: run.meritEarned, feats: fresh.map((f) => f.name) },
+    }));
     sfx.win();
     return;
   }
@@ -363,10 +523,13 @@ function lose(
   get: () => GameStore,
 ) {
   const run = get().run;
-  const meta = { ...get().meta };
+  const awarded = run ? awardXp(get, 0) : { meta: { ...get().meta }, gained: 0, realm: null };
+  const meta = { ...awarded.meta };
   if (run) {
     meta.bestAct = Math.max(meta.bestAct, run.act);
     meta.bestFloor = Math.max(meta.bestFloor, run.floor);
+    const fresh = unlockFeats(meta);
+    meta.merit += (run.meritEarned ?? 0) + fresh.reduce((s, f) => s + f.merit, 0);
     saveMeta(meta);
   }
   clearRun();
@@ -380,6 +543,9 @@ function lose(
     turnBeat: null,
     actingUid: null,
     handAnim: null,
+    lastXp: run
+      ? { amount: run.xpEarned ?? 0, realm: awarded.realm, merit: run.meritEarned ?? 0 }
+      : null,
   });
 }
 
@@ -488,8 +654,14 @@ export const useGame = create<GameStore>((set, get) => ({
   turnBeat: null,
   denyUid: null,
   denyAt: 0,
+  heritageOpen: false,
+  lastXp: null,
+  prepareOpen: false,
+  draftPath: "jian",
+  draftCalamity: 0,
 
   hydrate() {
+    if (get().ready) return;
     const meta = loadMeta();
     const saved = loadRun();
     set({
@@ -515,16 +687,31 @@ export const useGame = create<GameStore>((set, get) => ({
       deck: [],
       relics: [],
       potions: Array.from({ length: POTION_SLOTS }, () => null),
-      map: generateMap(1, rng),
+      map: [],
       currentNodeId: null,
       visited: [],
       floor: 0,
       nextUid: 1,
       rngState: rng.state,
       kills: 0,
+      xpEarned: 0,
+      meritEarned: 0,
+      flags: [],
+      path: get().draftPath || get().meta.path || "jian",
+      calamity: get().draftCalamity ?? get().meta.calamity ?? 0,
     };
     run.deck = makeDeck(run);
-    const meta = { ...get().meta, runs: get().meta.runs + 1 };
+    applyMetaToRun(run, get().meta, rng);
+    run.map = generateMap(1, rng, run.calamity);
+    run.rngState = rng.state;
+    const meta = {
+      ...get().meta,
+      runs: get().meta.runs + 1,
+      path: run.path,
+      calamity: run.calamity,
+    };
+    const fresh = unlockFeats(meta);
+    meta.merit += fresh.reduce((s, f) => s + f.merit, 0);
     saveMeta(meta);
     clearRun();
     persist("map", run);
@@ -535,6 +722,7 @@ export const useGame = create<GameStore>((set, get) => ({
       meta,
       result: null,
       confirmNew: false,
+      prepareOpen: false,
     });
   },
 
@@ -839,7 +1027,9 @@ export const useGame = create<GameStore>((set, get) => ({
   restHeal() {
     const run = get().run;
     if (!run) return;
-    const heal = Math.ceil(run.maxHp * 0.3) + (run.relics.includes("putuan") ? 12 : 0);
+    const healBase = Math.ceil(run.maxHp * 0.3) + (run.relics.includes("putuan") ? 12 : 0);
+    const extra = incenseRank(get().meta, "huyuan") ? 8 : 0;
+    const heal = Math.max(1, Math.floor((healBase + extra) * ((run.calamity ?? 0) >= 3 ? 0.75 : 1)));
     run.hp = Math.min(run.maxHp, run.hp + heal);
     if (run.relics.includes("buyun")) {
       addPotion(run, rollPotion(run));
@@ -866,6 +1056,7 @@ export const useGame = create<GameStore>((set, get) => ({
     const rng = rngOf(run);
     const result = choice.apply(run, rng, () => alloc(run));
     run.rngState = rng.state;
+    if (run.relics.includes("wendaoling")) run.gold += 12;
     if (result.select) {
       set({
         run: { ...run },
@@ -891,8 +1082,15 @@ export const useGame = create<GameStore>((set, get) => ({
     if (pending.kind === "upgrade") {
       if (!canUpgrade(card)) return;
       card.upgraded = true;
-      set({ run: { ...run }, toast: `${CARDS[card.defId]?.name ?? "功法"}進境` });
-    } else if (pending.kind === "remove") {
+      sfx.relic();
+      set({
+        run: { ...run },
+        pending: { ...pending, resolved: uid },
+        toast: `${CARDS[card.defId]?.name ?? "功法"}進境`,
+      });
+      return;
+    }
+    if (pending.kind === "remove") {
       if (pending.after === "shop") {
         const shop = get().shop;
         const offer = shop?.find((o) => o.kind === "remove" && !o.sold);
@@ -906,23 +1104,55 @@ export const useGame = create<GameStore>((set, get) => ({
           offer.sold = true;
         }
       }
+      const name = CARDS[card.defId]?.name ?? "功法";
       run.deck = run.deck.filter((c) => c.uid !== uid);
-      set({ run: { ...run }, shop: get().shop ? [...get().shop!] : null, toast: "已廢此功" });
-    } else if (pending.kind === "transform") {
-      const pool = rewardPool();
+      sfx.discard();
+      set({
+        run: { ...run },
+        shop: get().shop ? [...get().shop!] : null,
+        pending: { ...pending, resolved: uid },
+        toast: `已廢${name}`,
+      });
+      return;
+    }
+    if (pending.kind === "transform") {
+      const pool = rewardPool({ xp: get().meta.xp });
       const rng = rngOf(run);
       const next = rng.pick(pool);
       card.defId = next.id;
       card.upgraded = false;
       run.rngState = rng.state;
-      set({ run: { ...run }, toast: `化作 ${next.name}` });
+      sfx.relic();
+      set({
+        run: { ...run },
+        pending: { ...pending, resolved: uid },
+        toast: `化作 ${next.name}`,
+      });
     }
+  },
+
+  leaveSelect() {
+    const pending = get().pending;
+    if (!pending) return;
     goAfterSelect(set, get, pending.after);
   },
 
   cancelSelect() {
     const pending = get().pending;
     if (!pending) return;
+    if (pending.resolved) {
+      goAfterSelect(set, get, pending.after);
+      return;
+    }
+    const run = get().run;
+    if (pending.after === "rest") {
+      set({ screen: "rest", pending: null, run: run ? { ...run } : null });
+      return;
+    }
+    if (pending.after === "shop") {
+      set({ screen: "shop", pending: null, run: run ? { ...run } : null });
+      return;
+    }
     goAfterSelect(set, get, pending.after);
   },
 
@@ -930,8 +1160,11 @@ export const useGame = create<GameStore>((set, get) => ({
     const run = get().run;
     if (!run) return;
     applyRelicGain(run, id);
+    const meta = { ...get().meta, seenRelics: [...get().meta.seenRelics] };
+    noteRelic(meta, id);
+    saveMeta(meta);
     sfx.relic();
-    set({ run: { ...run }, relicPulse: id, toast: `獲得 ${RELICS[id]?.name ?? "法寶"}` });
+    set({ run: { ...run }, meta, relicPulse: id, toast: `獲得 ${RELICS[id]?.name ?? "法寶"}` });
     finishActOrMap(set, get);
   },
 
@@ -946,6 +1179,66 @@ export const useGame = create<GameStore>((set, get) => ({
   },
   setInspect(v) {
     set({ inspect: v });
+  },
+  setHeritageOpen(v) {
+    set({ heritageOpen: v });
+  },
+  openPrepare() {
+    const meta = get().meta;
+    set({
+      prepareOpen: true,
+      confirmNew: false,
+      screen: "title",
+      draftPath: pathOpenSafe(meta, meta.path) ? meta.path : "jian",
+      draftCalamity: Math.min(meta.calamity ?? 0, meta.maxCalamity ?? 0),
+    });
+  },
+  closePrepare() {
+    set({ prepareOpen: false });
+  },
+  setDraftPath(id) {
+    set({ draftPath: id });
+  },
+  setDraftCalamity(n) {
+    set({ draftCalamity: n });
+  },
+  confirmRun() {
+    get().newRun();
+  },
+  buyIncense(id) {
+    const def = INCENSE.find((x) => x.id === id);
+    if (!def) return;
+    const meta = {
+      ...get().meta,
+      spent: { ...get().meta.spent },
+      feats: [...get().meta.feats],
+    };
+    if (!contentOpen(meta, def.need)) {
+      sfx.deny();
+      set({ toast: "境未開" });
+      return;
+    }
+    const rank = incenseRank(meta, id);
+    if (rank >= def.max) {
+      sfx.deny();
+      set({ toast: "已滿階" });
+      return;
+    }
+    if (meta.merit < def.cost) {
+      sfx.deny();
+      set({ toast: `功德不足 · 需${def.cost}` });
+      return;
+    }
+    meta.merit -= def.cost;
+    meta.spent[id] = rank + 1;
+    const fresh = unlockFeats(meta);
+    meta.merit += fresh.reduce((s, f) => s + f.merit, 0);
+    saveMeta(meta);
+    sfx.relic();
+    set({
+      meta,
+      toast: fresh[0] ? `功業 · ${fresh[0].name}` : `上香 · ${def.name}`,
+    });
   },
   dismissToast() {
     set({ toast: null });

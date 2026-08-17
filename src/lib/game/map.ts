@@ -1,9 +1,9 @@
 import { Rng } from "./rng";
-import type { MapNode, NodeType } from "./types";
+import type { ActId, MapNode, NodeType } from "./types";
 
 const LAYER_WIDTHS = [1, 3, 4, 3, 4, 3, 3, 2, 1];
 
-function assignType(layer: number, slot: number, rng: Rng, act: 1 | 2): NodeType {
+function assignType(layer: number, slot: number, rng: Rng, calamity: number): NodeType {
   if (layer === 0) return "combat";
   if (layer === LAYER_WIDTHS.length - 1) return "boss";
   if (layer === LAYER_WIDTHS.length - 2) {
@@ -12,7 +12,8 @@ function assignType(layer: number, slot: number, rng: Rng, act: 1 | 2): NodeType
   if (layer === 1) return rng.chance(0.65) ? "combat" : "event";
   if (layer === 4 && slot === 0) return "treasure";
   const roll = rng.next();
-  if (layer >= 3 && roll < 0.12) return "elite";
+  const eliteCut = 0.12 + Math.max(0, calamity) * 0.04;
+  if (layer >= 3 && roll < eliteCut) return "elite";
   if (roll < 0.42) return "combat";
   if (roll < 0.6) return "event";
   if (roll < 0.72) return "shop";
@@ -21,7 +22,7 @@ function assignType(layer: number, slot: number, rng: Rng, act: 1 | 2): NodeType
   return "combat";
 }
 
-export function generateMap(act: 1 | 2, rng: Rng): MapNode[] {
+export function generateMap(act: ActId, rng: Rng, calamity = 0): MapNode[] {
   let attempt = 0;
   while (attempt < 12) {
     attempt += 1;
@@ -30,7 +31,7 @@ export function generateMap(act: 1 | 2, rng: Rng): MapNode[] {
         id: `a${act}-l${layer}-s${slot}`,
         layer,
         slot,
-        type: assignType(layer, slot, rng, act),
+        type: assignType(layer, slot, rng, calamity),
         next: [] as string[],
       })),
     );
@@ -75,7 +76,7 @@ export function generateMap(act: 1 | 2, rng: Rng): MapNode[] {
     const nodes = layers.flat();
     if (isConnected(nodes)) return nodes;
   }
-  return generateMap(act, rng);
+  return generateMap(act, rng, calamity);
 }
 
 function isConnected(nodes: MapNode[]): boolean {
@@ -107,9 +108,10 @@ export function reachableFrom(currentId: string | null, nodes: MapNode[], visite
   return cur.next.filter((id) => !visited.includes(id));
 }
 
-export const ACT_NAME: Record<1 | 2, string> = {
+export const ACT_NAME: Record<ActId, string> = {
   1: "練氣境 · 青冥山",
   2: "築基境 · 劫雲臺",
+  3: "元嬰境 · 星隕谷",
 };
 
 export const NODE_LABEL: Record<NodeType, string> = {

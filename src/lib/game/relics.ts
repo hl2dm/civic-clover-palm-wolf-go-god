@@ -4,6 +4,7 @@ export interface RelicDef {
   seal: string;
   text: string;
   rarity: "common" | "uncommon" | "rare";
+  unlock?: string;
 }
 
 export const RELICS: Record<string, RelicDef> = {
@@ -168,6 +169,38 @@ export const RELICS: Record<string, RelicDef> = {
     seal: "錢",
     text: "坊市物價九折",
     rarity: "common",
+  },
+  canjuan: {
+    id: "canjuan",
+    name: "殘卷玉簡",
+    seal: "簡",
+    text: "本途第一次戰勝後，隨機溫養一門功法",
+    rarity: "uncommon",
+    unlock: "lianqi",
+  },
+  wendaoling: {
+    id: "wendaoling",
+    name: "問道鈴",
+    seal: "鈴",
+    text: "奇遇結束時額外獲得 12 靈石",
+    rarity: "common",
+    unlock: "zhuji",
+  },
+  yingkui: {
+    id: "yingkui",
+    name: "影傀絲",
+    seal: "絲",
+    text: "每場戰鬥首次劍訣額外造成 3 點傷害",
+    rarity: "uncommon",
+    unlock: "jindan",
+  },
+  changsheng: {
+    id: "changsheng",
+    name: "長生露",
+    seal: "露",
+    text: "擊敗首領後回復 10 點氣血",
+    rarity: "rare",
+    unlock: "yuanying",
   },
 };
 

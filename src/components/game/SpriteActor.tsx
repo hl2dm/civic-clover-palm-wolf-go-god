@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { spriteFrames, type SpritePose } from "@/lib/game/sprites";
+import { spriteBox, spriteFrames, spriteTint, type SpriteBox, type SpritePose } from "@/lib/game/sprites";
 import { cn } from "@/lib/utils";
-
-const SIZE = {
-  sm: "h-32 w-28 sm:h-44 sm:w-36",
-  md: "h-40 w-32 sm:h-56 sm:w-40",
-  lg: "h-48 w-36 sm:h-64 sm:w-48",
-  xl: "h-[19rem] w-48 sm:h-[26rem] sm:w-72",
-} as const;
 
 export function SpriteActor({
   defId,
   pose,
-  size,
+  box,
   facing = "right",
   className,
 }: {
   defId: string;
   pose: SpritePose;
-  size: "sm" | "md" | "lg" | "xl";
+  box?: SpriteBox;
   facing?: "left" | "right";
   className?: string;
 }) {
@@ -27,6 +20,7 @@ export function SpriteActor({
   const hurt = useMemo(() => spriteFrames(defId, "hurt"), [defId]);
   const [ready, setReady] = useState<Set<string>>(() => new Set());
   const [anim, setAnim] = useState({ pose: "idle" as SpritePose, blend: 0 });
+  const dim = box ?? spriteBox(defId);
 
   useEffect(() => {
     const all = [...idle, ...attack, ...hurt];
@@ -47,7 +41,7 @@ export function SpriteActor({
     return () => {
       live = false;
     };
-  }, [idle, attack, hurt]);
+  }, [defId, idle, attack, hurt]);
 
   const attackReady = attack.length > 0 && attack.every((src) => ready.has(src));
   const hurtReady = hurt.length > 0 && hurt.every((src) => ready.has(src));
@@ -79,17 +73,23 @@ export function SpriteActor({
 
   const shownPose = anim.pose === livePose ? anim.pose : livePose;
   const blend = anim.pose === livePose ? anim.blend : 0;
+  const tint = spriteTint(defId);
 
   return (
     <div
       className={cn(
-        "relative overflow-visible",
-        SIZE[size],
+        "sprite-actor relative overflow-visible",
         shownPose === "idle" && "sprite-breathe",
         shownPose === "attack" && (facing === "right" ? "sprite-lunge-r" : "sprite-lunge-l"),
         shownPose === "hurt" && "sprite-recoil",
+        defId !== "player" && "foe-sprite",
         className,
       )}
+      style={{
+        ["--sprite-w" as string]: `${dim.w}px`,
+        ["--sprite-h" as string]: `${dim.h}px`,
+        ...(tint ? { filter: tint } : null),
+      }}
     >
       <div
         className="absolute inset-0"
@@ -130,7 +130,7 @@ function Layer({
             src={src}
             alt=""
             draggable={false}
-            className="pointer-events-none absolute bottom-0 left-1/2 h-full w-auto max-w-none"
+            className="pointer-events-none absolute bottom-0 left-1/2 max-h-full max-w-full w-auto h-auto object-contain object-bottom"
             style={{
               opacity,
               willChange: "opacity",

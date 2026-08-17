@@ -1,8 +1,9 @@
 import { CARDS, rewardPool } from "./cards";
+import { contentOpen } from "./meta";
 import { POTION_LIST } from "./potions";
 import { RELIC_LIST } from "./relics";
 import { Rng } from "./rng";
-import type { CardInst, RunState } from "./types";
+import type { CardInst, MetaState, RunState } from "./types";
 
 export interface EventResult {
   log: string;
@@ -24,6 +25,7 @@ export interface EventDef {
   bg: string;
   figure: string;
   seal: string;
+  unlock?: string;
 }
 
 function addCard(run: RunState, defId: string, alloc: () => string, upgraded = false): void {
@@ -35,8 +37,8 @@ export const EVENTS: EventDef[] = [
     id: "dongfu",
     title: "無名洞府",
     body: "石門半掩，裡面殘留著前人的氣息。洞壁刻著半卷功法，也隱隱有陣法反噬的味道。",
-    bg: "/scenes/cave.jpg",
-    figure: "/scenes/hermit.jpg",
+    bg: "/scenes/events/dongfu.jpg?v=9",
+    figure: "/scenes/events/dongfu-fig.jpg",
     seal: "府",
     choices: [
       {
@@ -76,8 +78,8 @@ export const EVENTS: EventDef[] = [
     id: "sanxiu",
     title: "散修交易",
     body: "一名面黃肌瘦的散修攔住去路，攤開一塊舊布：幾張殘破符籙，要價不低。",
-    bg: "/scenes/forest.jpg",
-    figure: "/scenes/wanderer.jpg",
+    bg: "/scenes/events/sanxiu.jpg?v=8",
+    figure: "/scenes/events/sanxiu-fig.jpg",
     seal: "市",
     choices: [
       {
@@ -115,8 +117,8 @@ export const EVENTS: EventDef[] = [
     id: "xinmo",
     title: "心魔叩問",
     body: "夜宿崖邊，你聽見自己的聲音：若功法駁雜，道心如何不裂？",
-    bg: "/scenes/cliff.jpg",
-    figure: "/scenes/shade.jpg",
+    bg: "/scenes/events/xinmo.jpg?v=8",
+    figure: "/scenes/events/xinmo-fig.jpg",
     seal: "心",
     choices: [
       {
@@ -143,8 +145,8 @@ export const EVENTS: EventDef[] = [
     id: "qianbei",
     title: "前輩殘影",
     body: "一縷殘魂坐在枯松下，看了你一眼：「小輩，可願聽我一言？」",
-    bg: "/scenes/cliff.jpg",
-    figure: "/scenes/hermit.jpg",
+    bg: "/scenes/events/qianbei.jpg?v=8",
+    figure: "/scenes/events/qianbei-fig.jpg",
     seal: "影",
     choices: [
       {
@@ -168,8 +170,8 @@ export const EVENTS: EventDef[] = [
     id: "lingquan",
     title: "山中靈泉",
     body: "一線清泉自石縫滲出，喝下去只怕有益，也怕雜質入體。",
-    bg: "/scenes/forest.jpg",
-    figure: "/scenes/fox.jpg",
+    bg: "/scenes/events/lingquan.jpg?v=8",
+    figure: "/scenes/events/lingquan-fig.jpg",
     seal: "泉",
     choices: [
       {
@@ -197,8 +199,8 @@ export const EVENTS: EventDef[] = [
     id: "tiancai",
     title: "天材地寶",
     body: "崖縫中探出一株三葉靈芝。強摘可能損了根基，細心培元則可溫養功法。",
-    bg: "/scenes/forest.jpg",
-    figure: "/scenes/hermit.jpg",
+    bg: "/scenes/events/tiancai.jpg?v=8",
+    figure: "/scenes/events/tiancai-fig.jpg",
     seal: "芝",
     choices: [
       {
@@ -223,8 +225,8 @@ export const EVENTS: EventDef[] = [
     id: "jieyun",
     title: "劫雲低垂",
     body: "天色忽然壓暗。這不是你的天劫，卻也夠傷人。硬抗可淬鍊肉身。",
-    bg: "/scenes/cliff.jpg",
-    figure: "/scenes/monk-storm.jpg",
+    bg: "/scenes/events/jieyun.jpg?v=9",
+    figure: "/scenes/events/jieyun-fig.jpg",
     seal: "劫",
     choices: [
       {
@@ -251,8 +253,8 @@ export const EVENTS: EventDef[] = [
     id: "danfang",
     title: "廢棄丹房",
     body: "爐火已熄，案上還剩幾枚封蠟未乾的丹藥。有的溫潤，有的發黑。",
-    bg: "/scenes/cave.jpg",
-    figure: "/scenes/wanderer.jpg",
+    bg: "/scenes/events/danfang.jpg?v=8",
+    figure: "/scenes/events/danfang-fig.jpg",
     seal: "丹",
     choices: [
       {
@@ -297,10 +299,159 @@ export const EVENTS: EventDef[] = [
       },
     ],
   },
+  {
+    id: "gubei",
+    title: "古碑問字",
+    body: "斷碑沒入苔中。殘存的一筆不像劍訣，倒像有人在問：你為何上山。",
+    bg: "/scenes/events/qianbei.jpg?v=8",
+    figure: "/scenes/events/qianbei-fig.jpg",
+    seal: "碑",
+    unlock: "lianqi",
+    choices: [
+      {
+        id: "read",
+        label: "對碑默讀",
+        hint: "升級一張牌",
+        apply: () => ({ log: "那一筆落進你腕裡。", select: "upgrade" }),
+      },
+      {
+        id: "cut",
+        label: "以劍作答",
+        hint: "失去 6 點氣血，獲得一張罕見牌",
+        apply(run, rng, alloc) {
+          run.hp = Math.max(1, run.hp - 6);
+          const pool = rewardPool().filter((c) => c.rarity === "uncommon" || c.rarity === "rare");
+          const card = rng.pick(pool.length ? pool : rewardPool());
+          addCard(run, card.id, alloc);
+          return { log: `劍氣入石，你記下「${card.name}」。` };
+        },
+      },
+    ],
+  },
+  {
+    id: "yehang",
+    title: "夜行商胡",
+    body: "駝鈴停在霧裡。商胡掀開簾：「煉氣以後的貨，白日不賣。」",
+    bg: "/scenes/events/sanxiu.jpg?v=8",
+    figure: "/scenes/events/yehang-fig.jpg?v=1",
+    seal: "胡",
+    unlock: "zhuji",
+    choices: [
+      {
+        id: "buy",
+        label: "付 45 靈石",
+        hint: "獲得一件隨機法寶",
+        apply(run, rng) {
+          if (run.gold < 45) return { log: "你摸空腰袋，商胡只笑一聲走了。" };
+          const pool = RELIC_LIST.filter((r) => !run.relics.includes(r.id));
+          if (!pool.length) {
+            run.gold += 20;
+            return { log: "貨已售罄，他扔回一撮碎銀。" };
+          }
+          run.gold -= 45;
+          const r = rng.pick(pool);
+          run.relics.push(r.id);
+          if (r.id === "yinqi") run.maxEnergy += 1;
+          if (r.id === "xisui") {
+            run.maxHp += 8;
+            run.hp += 8;
+          }
+          if (r.id === "jubao") run.gold += 40;
+          if (r.id === "qiankun") run.potions.push(null);
+          return { log: `成交。「${r.name}」入手。` };
+        },
+      },
+      {
+        id: "ask",
+        label: "只問路",
+        hint: "獲得 30 靈石",
+        apply(run) {
+          run.gold += 30;
+          return { log: "商胡嫌你窮，丟下一小袋壓驚。" };
+        },
+      },
+    ],
+  },
+  {
+    id: "menggu",
+    title: "夢中故人",
+    body: "夜裡有人喚你的舊名。睜眼，燈焰是狐狸眼睛。",
+    bg: "/scenes/events/xinmo.jpg?v=8",
+    figure: "/scenes/events/menggu-fig.jpg?v=1",
+    seal: "夢",
+    unlock: "jindan",
+    choices: [
+      {
+        id: "stay",
+        label: "坐下來聽",
+        hint: "回復 18 點氣血，獲得「問心燈」",
+        apply(run, _rng, alloc) {
+          run.hp = Math.min(run.maxHp, run.hp + 18);
+          if (!run.deck.some((c) => c.defId === "wenxindeng")) addCard(run, "wenxindeng", alloc);
+          return { log: "她把一盞燈放進你袖裡：「別忘了問自己。」" };
+        },
+      },
+      {
+        id: "wake",
+        label: "咬舌醒來",
+        hint: "失去 8 點氣血，最大氣血 +6",
+        apply(run) {
+          run.maxHp += 6;
+          run.hp = Math.max(1, Math.min(run.maxHp, run.hp - 8));
+          return { log: "血味把夢撕開。你活得更硬了一些。" };
+        },
+      },
+    ],
+  },
+  {
+    id: "tianxing",
+    title: "天外墜星",
+    body: "隕石砸進谷底，還熱。靠近能聽見裡面有人呼吸。",
+    bg: "/scenes/events/tiancai.jpg?v=8",
+    figure: "/scenes/events/tianxing-fig.jpg?v=1",
+    seal: "星",
+    unlock: "yuanying",
+    choices: [
+      {
+        id: "take",
+        label: "剖開取核",
+        hint: "獲得一件稀有法寶",
+        apply(run, rng) {
+          const pool = RELIC_LIST.filter((r) => !run.relics.includes(r.id) && r.rarity === "rare");
+          const fallback = RELIC_LIST.filter((r) => !run.relics.includes(r.id));
+          const r = (pool.length ? rng.pick(pool) : fallback.length ? rng.pick(fallback) : null);
+          if (!r) {
+            run.gold += 80;
+            return { log: "核已空，只剩燙手的星鐵，換了靈石。" };
+          }
+          run.relics.push(r.id);
+          if (r.id === "yinqi") run.maxEnergy += 1;
+          if (r.id === "xisui") {
+            run.maxHp += 8;
+            run.hp += 8;
+          }
+          if (r.id === "qiankun") run.potions.push(null);
+          return { log: `星核化作「${r.name}」。` };
+        },
+      },
+      {
+        id: "breathe",
+        label: "對星吐納",
+        hint: "最大氣血 +10，回復 10 點",
+        apply(run) {
+          run.maxHp += 10;
+          run.hp = Math.min(run.maxHp, run.hp + 10);
+          return { log: "星氣入脈，壽元似有所增。" };
+        },
+      },
+    ],
+  },
 ];
 
-export function pickEvent(rng: Rng): EventDef {
-  return rng.pick(EVENTS);
+export function pickEvent(rng: Rng, meta?: Pick<MetaState, "xp">): EventDef {
+  const gate = { xp: meta?.xp ?? 0 } as MetaState;
+  const pool = EVENTS.filter((e) => contentOpen(gate, e.unlock));
+  return rng.pick(pool.length ? pool : EVENTS);
 }
 
 export function canUpgrade(card: CardInst): boolean {

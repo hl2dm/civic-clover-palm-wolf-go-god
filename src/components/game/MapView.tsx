@@ -37,20 +37,17 @@ export function MapView() {
   return (
     <div className="relative min-h-[calc(100dvh-52px)]">
       <img
-        src="/title-bg.jpg"
+        src="/title-bg.jpg?v=9"
         alt=""
         className="pointer-events-none absolute inset-0 size-full object-cover opacity-30"
         crossOrigin="anonymous"
       />
       <div className="absolute inset-0 bg-bg/75" />
-      <div className="relative mx-auto max-w-xl px-3 pb-24 pt-6">
+      <div className="relative mx-auto max-w-xl px-3 pb-32 pt-6">
         <div className="mb-4 text-center">
           <p className="text-xs tracking-[0.3em] text-muted">擇路</p>
           <h2 className="mt-1 font-serif text-3xl">{ACT_NAME[run.act]}</h2>
           <p className="mt-2 text-xs text-muted">自下而上，擇一途前行</p>
-        </div>
-        <div className="mb-4 rounded-lg border border-border bg-surface/80 px-3 py-3">
-          <RelicRow />
         </div>
         <div className="relative mx-auto mt-2 w-full max-w-md" style={{ height }}>
           <svg className="pointer-events-none absolute inset-0 size-full text-border-strong" aria-hidden>
@@ -103,6 +100,17 @@ export function MapView() {
           })}
         </div>
       </div>
+      <MapRelicDock />
     </div>
+  );
+}
+
+function MapRelicDock() {
+  const relics = useGame((s) => s.run?.relics);
+  if (!relics?.length) return null;
+  return (
+    <aside className="map-relic-dock" aria-label="法寶">
+      <RelicRow compact />
+    </aside>
   );
 }

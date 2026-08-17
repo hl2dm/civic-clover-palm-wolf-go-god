@@ -3,7 +3,7 @@ import { installUnlock, setAmbience } from "@/lib/game/audio";
 import { saveRun } from "@/lib/game/save";
 import { useGame } from "@/lib/game/store";
 import { CombatView } from "./CombatView";
-import { DeckModal, HelpModal, ItemInspect, ToastBar, TopBar } from "./Chrome";
+import { DeckModal, HelpModal, HeritageModal, ItemInspect, ToastBar, TopBar } from "./Chrome";
 import { MapView } from "./MapView";
 import {
   EventView,
@@ -17,13 +17,14 @@ import {
 import { TitleScreen } from "./TitleScreen";
 
 export function GameApp() {
-  const { ready, screen, hydrate } = useGame();
+  const ready = useGame((s) => s.ready);
+  const screen = useGame((s) => s.screen);
   const [veil, setVeil] = useState(false);
   const prevScreen = useRef(screen);
 
   useEffect(() => {
-    hydrate();
-  }, [hydrate]);
+    useGame.getState().hydrate();
+  }, []);
 
   useEffect(() => installUnlock(), []);
 
@@ -74,6 +75,7 @@ export function GameApp() {
       <>
         <TitleScreen />
         <HelpModal />
+        <HeritageModal />
       </>
     );
   }
@@ -87,7 +89,7 @@ export function GameApp() {
   }
 
   return (
-    <main className="min-h-dvh bg-bg">
+    <main className="min-h-dvh bg-bg" data-screen={screen}>
       {veil ? <div className="ink-veil" /> : null}
       <TopBar />
       {screen === "map" ? <MapView /> : null}
@@ -100,6 +102,7 @@ export function GameApp() {
       {screen === "select" ? <SelectView /> : null}
       <DeckModal />
       <HelpModal />
+      <HeritageModal />
       <ItemInspect />
       <ToastBar />
     </main>

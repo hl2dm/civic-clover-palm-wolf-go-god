@@ -38,7 +38,7 @@ export function BodyFx({
   }, [hp, block, wound]);
 
   return (
-    <div className="pointer-events-none absolute -inset-[18%] z-10 overflow-visible">
+    <div className="pointer-events-none absolute inset-0 z-10 overflow-visible">
       {block > 0 ? (
         <div
           className={cn(
@@ -47,10 +47,7 @@ export function BodyFx({
             burst?.kind === "gain" && "ward-gain",
           )}
         >
-          <span className="ward-halo" />
-          <span className="ward-veil" />
-          <span className="ward-ring" />
-          <span className="ward-floor" />
+          <img src="/ui/ward-oval.png?v=6" alt="" className="ward-img" crossOrigin="anonymous" />
         </div>
       ) : null}
       {burst?.kind === "slash" ? (

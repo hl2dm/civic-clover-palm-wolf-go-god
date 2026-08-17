@@ -1,5 +1,5 @@
 import { CARDS, cardCost, tickStartPowers } from "./cards";
-import { ACT1_COMBAT, ACT2_COMBAT, ELITES, ENEMIES, scaleHp } from "./enemies";
+import { ACT1_COMBAT, ACT2_COMBAT, ACT3_COMBAT, ELITES, ENEMIES, encounterOpen, pickLine, scaleHp } from "./enemies";
 import {
   addStatus,
   aliveEnemies,
@@ -14,19 +14,40 @@ import {
   syncRng,
 } from "./engine";
 import { Rng } from "./rng";
-import type { CardInst, CombatState, EnemyInst, NodeType, RunState } from "./types";
+import type { ActId, CardInst, CombatState, EnemyInst, NodeType, RunState } from "./types";
 import { HAND_SIZE } from "./types";
 
 function copyCard(card: CardInst, alloc: () => string): CardInst {
   return { uid: alloc(), defId: card.defId, upgraded: card.upgraded };
 }
 
-export function rollEncounter(type: NodeType, act: 1 | 2, rng: Rng, layer = 1): string[] {
-  if (type === "boss") return [act === 1 ? "zhuji" : "jindan"];
-  if (type === "elite") return [rng.pick(ELITES)];
-  if (type === "combat" && layer === 0) return act === 1 ? ["shanxiao"] : ["yeshou"];
-  const table = act === 1 ? ACT1_COMBAT : ACT2_COMBAT;
-  return [...rng.pick(table)];
+export function rollEncounter(
+  type: NodeType,
+  act: ActId,
+  rng: Rng,
+  layer = 1,
+  xp = 0,
+  calamity = 0,
+): string[] {
+  if (type === "boss") {
+    if (act === 1) return ["zhuji"];
+    if (act === 2) return ["jindan"];
+    return calamity >= 2 ? ["tianmo"] : ["yuanzhen"];
+  }
+  if (type === "elite") {
+    const elites = ELITES.filter((id) => encounterOpen([id], xp));
+    return [rng.pick(elites.length ? elites : ["neimen", "juyuan", "xinmo"])];
+  }
+  if (type === "combat" && layer === 0) {
+    if (act === 1) return ["shanxiao"];
+    if (act === 2) return ["yeshou"];
+    return ["moxiao"];
+  }
+  const table = (act === 3 ? ACT3_COMBAT : act === 2 ? ACT2_COMBAT : ACT1_COMBAT).filter((row) =>
+    encounterOpen(row, xp),
+  );
+  const fallback = act === 3 ? ACT3_COMBAT[0]! : act === 2 ? ACT2_COMBAT[0]! : ACT1_COMBAT[0]!;
+  return [...rng.pick(table.length ? table : [fallback])];
 }
 
 export function startCombat(run: RunState, encounter: string[], alloc: () => string): CombatState {
@@ -34,7 +55,7 @@ export function startCombat(run: RunState, encounter: string[], alloc: () => str
   const drawPile = rng.shuffle(run.deck.map((c) => copyCard(c, alloc)));
   const enemies: EnemyInst[] = encounter.map((id) => {
     const def = ENEMIES[id]!;
-    const maxHp = scaleHp(def.maxHp, run.act);
+    const maxHp = scaleHp(def.maxHp, run.act, run.calamity ?? 0);
     const inst: EnemyInst = {
       uid: alloc(),
       defId: id,
@@ -86,7 +107,17 @@ export function startCombat(run: RunState, encounter: string[], alloc: () => str
     extraDraw: 0,
     freePlay: run.relics.includes("shuangwen"),
     lieboArmed: true,
+    yingkuiArmed: run.relics.includes("yingkui"),
+    speech: null,
+    calamity: run.calamity ?? 0,
   };
+
+  const opener = ENEMIES[encounter[0]!];
+  const line = opener ? pickLine(opener, "start") : null;
+  if (line) {
+    combat.speech = { uid: enemies[0]!.uid, text: line };
+    combat.log = [line];
+  }
 
   if (run.relics.includes("xueyu")) {
     combat.playerHp = Math.max(1, combat.playerHp - 3);
@@ -141,6 +172,10 @@ export function playCard(c: CombatState, uid: string, targetId?: string): Combat
   c.hand = c.hand.filter((x) => x.uid !== uid);
   c.selectedUid = null;
   c.cardsPlayed += 1;
+  if (def.type === "attack" && c.yingkuiArmed) {
+    addStatus(c.playerStatuses, "nextStrike", 3);
+    c.yingkuiArmed = false;
+  }
   def.play(c, card.upgraded, targetId);
   if (def.type === "attack" && c.relics.includes("chilian")) {
     gainBlock(c, 2);
@@ -198,6 +233,8 @@ export function resolveEnemy(c: CombatState, enemy: EnemyInst): void {
   if (enemy.hp <= 0) return;
   const def = ENEMIES[enemy.defId];
   if (!def) return;
+  const said = pickLine(def, "act");
+  if (said) c.speech = { uid: enemy.uid, text: said };
   def.act(c, enemy);
   decayTimed(enemy.statuses);
   enemy.patternIndex += 1;
@@ -212,6 +249,7 @@ export function beginPlayerTurn(c: CombatState, opts?: { draw?: boolean }): Comb
   c.energy = c.maxEnergy;
   c.freePlay = c.relics.includes("shuangwen");
   c.lieboArmed = true;
+  c.yingkuiArmed = c.relics.includes("yingkui");
 
   const poison = getStatus(c.playerStatuses, "poison");
   if (poison > 0) {

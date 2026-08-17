@@ -1,5 +1,6 @@
 import type { MetaState, RunState, Screen } from "./types";
 import { SAVE_VERSION } from "./types";
+import { defaultMeta, normalizeMeta } from "./meta";
 
 const RUN_KEY = "wendao-run-v1";
 const META_KEY = "wendao-meta-v1";
@@ -10,16 +11,13 @@ export interface Persisted {
   run: RunState;
 }
 
-export function defaultMeta(): MetaState {
-  return { version: SAVE_VERSION, runs: 0, victories: 0, bestAct: 0, bestFloor: 0 };
-}
+export { defaultMeta };
 
 export function loadMeta(): MetaState {
   try {
     const raw = localStorage.getItem(META_KEY);
     if (!raw) return defaultMeta();
-    const parsed = JSON.parse(raw) as MetaState;
-    return { ...defaultMeta(), ...parsed, version: SAVE_VERSION };
+    return normalizeMeta(JSON.parse(raw) as Partial<MetaState>);
   } catch {
     return defaultMeta();
   }
@@ -38,8 +36,15 @@ export function loadRun(): Persisted | null {
     const raw = localStorage.getItem(RUN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Persisted;
-    if (parsed.version !== SAVE_VERSION || !parsed.run) return null;
-    return parsed;
+    if (!parsed.run) return null;
+    if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== SAVE_VERSION) return null;
+    const run = parsed.run;
+    if (typeof run.xpEarned !== "number") run.xpEarned = 0;
+    if (typeof run.meritEarned !== "number") run.meritEarned = 0;
+    if (!Array.isArray(run.flags)) run.flags = [];
+    if (!run.path) run.path = "jian";
+    if (typeof run.calamity !== "number") run.calamity = 0;
+    return { ...parsed, version: SAVE_VERSION, run };
   } catch {
     return null;
   }

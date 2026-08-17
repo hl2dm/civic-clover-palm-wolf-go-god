@@ -9,6 +9,7 @@ export interface CardDef {
   cost: number;
   target: TargetKind;
   exhaust?: boolean;
+  unlock?: string;
   text: (up: boolean) => string;
   play: (c: CombatState, up: boolean, targetId?: string) => void;
 }

@@ -3,3 +3,14 @@ node_modules/
 .github_repo
 .env
 .env.*
+.grok/status
+screenshots/
+artifacts/
+attachments/
+tmp-*/
+tmp-*/
+scripts/__pycache__/
+**/__pycache__/
+*.pyc
+.tanstack/
+.node_modules.lock

@@ -1,4 +1,6 @@
 import type { CardDef } from "./catalog-types";
+import { contentOpen } from "./meta";
+import type { MetaState } from "./types";
 import {
   addStatus,
   aliveEnemies,
@@ -384,6 +386,131 @@ export const CARDS: Record<string, CardDef> = {
       c.extraDraw += up ? 2 : 1;
     },
   },
+  liekong: {
+    id: "liekong",
+    name: "裂空掌",
+    seal: "裂",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    unlock: "lianqi",
+    target: "enemy",
+    text: (up) => `造成 ${up ? 7 : 5} 點傷害，給予 ${up ? 2 : 1} 層破防`,
+    play(c, up, targetId) {
+      const e = findEnemy(c, targetId);
+      if (!e) return;
+      damageEnemy(c, e, up ? 7 : 5);
+      addStatus(e.statuses, "vulnerable", up ? 2 : 1);
+      consumeNextStrike(c);
+    },
+  },
+  huifeng: {
+    id: "huifeng",
+    name: "回風劍",
+    seal: "回",
+    type: "attack",
+    rarity: "common",
+    cost: 1,
+    unlock: "lianqi",
+    target: "enemy",
+    text: (up) => `造成 ${up ? 6 : 4} 點傷害，抽 1 張牌`,
+    play(c, up, targetId) {
+      const e = findEnemy(c, targetId);
+      if (!e) return;
+      damageEnemy(c, e, up ? 6 : 4);
+      consumeNextStrike(c);
+      const rng = rngFrom(c);
+      drawCards(c, 1, rng);
+      syncRng(c, rng);
+    },
+  },
+  zhenhunzhou: {
+    id: "zhenhunzhou",
+    name: "鎮魂咒",
+    seal: "鎮",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 1,
+    unlock: "zhuji",
+    target: "self",
+    text: (up) => {
+      const n = up ? 8 : 6;
+      const b = up ? 5 : 4;
+      return `獲得 ${n} 點護體。若敵手欲攻，再得 ${b} 點`;
+    },
+    play(c, up) {
+      gainBlock(c, up ? 8 : 6);
+      if (c.enemies.some((e) => e.hp > 0 && (e.intent.kind === "attack" || e.intent.kind === "attackDebuff"))) {
+        gainBlock(c, up ? 5 : 4);
+      }
+    },
+  },
+  huaxue: {
+    id: "huaxue",
+    name: "化血訣",
+    seal: "化",
+    type: "skill",
+    rarity: "uncommon",
+    cost: 0,
+    unlock: "zhuji",
+    exhaust: true,
+    target: "self",
+    text: (up) => `失去 ${up ? 2 : 3} 點氣血，獲得 2 點靈力。消耗`,
+    play(c, up) {
+      const lose = up ? 2 : 3;
+      c.playerHp = Math.max(1, c.playerHp - lose);
+      pushFloater(c, `-${lose}`, "dmg", "player");
+      c.energy += 2;
+    },
+  },
+  tianwen: {
+    id: "tianwen",
+    name: "天問",
+    seal: "問",
+    type: "attack",
+    rarity: "rare",
+    cost: 2,
+    unlock: "jindan",
+    target: "all",
+    text: (up) => `對所有敵人造成 ${up ? 10 : 7} 點傷害，給予 1 層虛弱`,
+    play(c, up) {
+      damageAllEnemies(c, up ? 10 : 7);
+      for (const e of aliveEnemies(c)) addStatus(e.statuses, "weak", 1);
+      consumeNextStrike(c);
+    },
+  },
+  wenxindeng: {
+    id: "wenxindeng",
+    name: "問心燈",
+    seal: "燈",
+    type: "power",
+    rarity: "uncommon",
+    cost: 1,
+    unlock: "jindan",
+    target: "none",
+    text: (up) => `每回合開始時獲得 ${up ? 4 : 2} 點護體`,
+    play(c, up) {
+      c.powers.push({ defId: "wenxindeng", upgraded: up });
+    },
+  },
+  fenghou: {
+    id: "fenghou",
+    name: "一劍封喉",
+    seal: "封",
+    type: "attack",
+    rarity: "rare",
+    cost: 3,
+    unlock: "yuanying",
+    target: "enemy",
+    text: (up) => `造成 ${up ? 16 : 12} 點傷害。敵手氣血未半則改為 ${up ? 32 : 26} 點`,
+    play(c, up, targetId) {
+      const e = findEnemy(c, targetId);
+      if (!e) return;
+      const low = e.hp * 2 <= e.maxHp;
+      damageEnemy(c, e, low ? (up ? 32 : 26) : up ? 16 : 12);
+      consumeNextStrike(c);
+    },
+  },
 };
 
 export const CARD_LIST = Object.values(CARDS);
@@ -403,8 +530,9 @@ export function starterDeckIds(): string[] {
   ];
 }
 
-export function rewardPool(): CardDef[] {
-  return CARD_LIST.filter((c) => c.rarity !== "starter");
+export function rewardPool(meta?: Pick<MetaState, "xp">): CardDef[] {
+  const gate = { xp: meta?.xp ?? 0 } as MetaState;
+  return CARD_LIST.filter((c) => c.rarity !== "starter" && contentOpen(gate, c.unlock));
 }
 
 export function cardCost(def: CardDef): number {
@@ -424,6 +552,9 @@ export function tickStartPowers(c: import("./types").CombatState): void {
     }
     if (p.defId === "jindanhu") {
       gainBlock(c, p.upgraded ? 5 : 3);
+    }
+    if (p.defId === "wenxindeng") {
+      gainBlock(c, p.upgraded ? 4 : 2);
     }
     if (p.defId === "fenxin") {
       c.playerHp = Math.max(0, c.playerHp - 1);
@@ -454,6 +585,11 @@ export function previewDamage(
     xueji: upgraded ? 24 : 20,
     chuanyun: upgraded ? 9 : 7,
     jianqi: c.playerBlock + (upgraded ? 5 : 0),
+    liekong: upgraded ? 7 : 5,
+    huifeng: upgraded ? 6 : 4,
+    tianwen: upgraded ? 10 : 7,
+    fenghou:
+      enemy.hp * 2 <= enemy.maxHp ? (upgraded ? 32 : 26) : upgraded ? 16 : 12,
   };
   const raw = rawMap[defId];
   if (raw == null) return null;

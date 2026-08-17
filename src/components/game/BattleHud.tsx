@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Shield } from "lucide-react";
 import { STATUS_LABEL } from "@/lib/game/engine";
-import type { Floater, Status } from "@/lib/game/types";
+import { intentLabel } from "@/lib/game/enemies";
+import type { Floater, Intent, Status } from "@/lib/game/types";
 import { cn } from "@/lib/utils";
 
 const LINGER_MS = 1800;
@@ -9,22 +9,33 @@ const LINGER_MS = 1800;
 export function useLingerFloaters(items: Floater[]) {
   const seen = useRef(new Set<string>());
   const [shown, setShown] = useState<(Floater & { until: number })[]>([]);
+  const ids = items.map((it) => it.id).join("|");
   useEffect(() => {
+    if (!items.length && !seen.current.size) return;
     const now = Date.now();
     setShown((prev) => {
-      const next = prev.filter((p) => p.until > now);
+      let changed = false;
+      const next = prev.filter((p) => {
+        if (p.until > now) return true;
+        changed = true;
+        return false;
+      });
       for (const it of items) {
         if (seen.current.has(it.id)) continue;
         seen.current.add(it.id);
         next.push({ ...it, until: now + LINGER_MS });
+        changed = true;
       }
-      return next;
+      return changed ? next : prev;
     });
-  }, [items]);
+  }, [ids, items]);
   useEffect(() => {
     const t = window.setInterval(() => {
       const now = Date.now();
-      setShown((p) => p.filter((x) => x.until > now));
+      setShown((p) => {
+        const next = p.filter((x) => x.until > now);
+        return next.length === p.length ? p : next;
+      });
     }, 180);
     return () => window.clearInterval(t);
   }, []);
@@ -63,25 +74,32 @@ export function HpPlaque({
   name,
   hp,
   max,
+  block = 0,
   align = "left",
   compact,
 }: {
   name: string;
   hp: number;
   max: number;
+  block?: number;
   align?: "left" | "right";
   compact?: boolean;
 }) {
   const pct = max <= 0 ? 0 : Math.max(0, Math.min(100, (hp / max) * 100));
   return (
-    <div className={cn("min-w-0", compact ? "w-40 sm:w-56" : "w-44 sm:w-64", align === "right" && "text-right")}>
+    <div className={cn("min-w-0", compact ? "w-52 sm:w-72" : "w-52 sm:w-80", align === "right" && "text-right")}>
       <p className="display-ink text-base leading-none tracking-wide sm:text-lg">{name}</p>
-      <div className={cn("mt-1 flex items-end gap-2", align === "right" && "flex-row-reverse")}>
-        <span className="qi-num qi-num-hp text-3xl leading-none sm:text-4xl">{hp}</span>
-        <span className="qi-num pb-0.5 text-xs text-muted">/{max}</span>
-      </div>
-      <div className="mt-1.5 h-2.5 overflow-hidden rounded-sm bg-bg/80">
-        <div className="h-full bg-hp transition-[width] duration-200" style={{ width: `${pct}%` }} />
+      <div className={cn("mt-1 flex items-center gap-2", align === "right" && "flex-row-reverse")}>
+        {block > 0 ? <BlockSeal value={block} /> : null}
+        <div className="min-w-0 flex-1">
+          <div className={cn("flex items-end gap-2", align === "right" && "flex-row-reverse")}>
+            <span className="qi-num qi-num-hp text-3xl leading-none sm:text-4xl">{hp}</span>
+            <span className="qi-num pb-0.5 text-xs text-muted">/{max}</span>
+          </div>
+          <div className="mt-1.5 h-2.5 overflow-hidden rounded-sm bg-bg/80">
+            <div className="h-full bg-hp transition-[width] duration-200" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -111,29 +129,44 @@ export function QiOrbs({ energy, max, starve }: { energy: number; max: number; s
 export function BlockSeal({ value }: { value: number }) {
   if (value <= 0) return null;
   return (
-    <div className="plaque flex items-center gap-1.5 rounded-full px-3 py-1.5">
-      <Shield className="size-4 text-block" />
-      <span className="display-ink text-sm text-block">護</span>
-      <span className="qi-num qi-num-block text-2xl leading-none">{value}</span>
+    <div className="block-seal" data-block={value} aria-label={`護體 ${value}`}>
+      <img src="/ui/block-seal.png?v=3" alt="" className="block-seal-img" crossOrigin="anonymous" />
+      <span className="qi-num qi-num-block block-seal-num">{value}</span>
     </div>
   );
 }
 
-export function IntentMark({ label, size = "sm" }: { label: string; size?: "sm" | "lg" }) {
-  const [kind, n] = label.split(" ");
-  const tone = kind === "攻" ? "qi-num-dmg" : kind === "守" ? "qi-num-block" : "text-paper";
+const INTENT_ICON: Record<string, string> = {
+  attack: "/ui/intent-attack.png?v=1",
+  attackDebuff: "/ui/intent-attack.png?v=1",
+  defend: "/ui/intent-defend.png?v=1",
+  buff: "/ui/intent-buff.png?v=1",
+  debuff: "/ui/intent-debuff.png?v=1",
+};
+
+export function IntentMark({ intent, size = "sm" }: { intent: Intent; size?: "sm" | "lg" }) {
+  const icon = INTENT_ICON[intent.kind] ?? INTENT_ICON.attack;
+  const showNum = intent.kind === "attack" || intent.kind === "attackDebuff" || intent.kind === "defend";
+  const tone =
+    intent.kind === "defend" ? "qi-num-block" : intent.kind === "buff" ? "qi-num-heal" : "qi-num-dmg";
+  // Intent stamp is independent of sprite boxes. Never inherit parent width.
+  const px = size === "lg" ? 36 : 28;
   return (
     <div
-      data-intent={label}
-      className={cn(
-        "intent-mark fx-intent plaque flex items-center justify-center gap-1.5 rounded-md",
-        size === "lg" ? "min-w-[4.5rem] px-3 py-1.5" : "px-2.5 py-1",
-      )}
+      data-intent={intentLabel(intent)}
+      className={cn("intent-badge", size === "lg" && "intent-badge-lg")}
+      style={{ width: px }}
     >
-      <span className={cn("display-ink leading-none text-paper", size === "lg" ? "text-2xl" : "text-lg")}>{kind}</span>
-      {n ? (
-        <span className={cn("qi-num leading-none", tone, size === "lg" ? "text-4xl" : "text-2xl")}>{n}</span>
-      ) : null}
+      <img
+        src={icon}
+        alt=""
+        width={px}
+        height={px}
+        className="intent-icon"
+        style={{ width: px, height: px }}
+        crossOrigin="anonymous"
+      />
+      {showNum ? <span className={cn("intent-num qi-num", tone)}>{intent.value}</span> : null}
     </div>
   );
 }
